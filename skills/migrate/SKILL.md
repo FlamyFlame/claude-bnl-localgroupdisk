@@ -403,12 +403,19 @@ root -b -l -q -e '
 '
 ```
 
-- **PASSED**: report results and proceed.
+- **PASSED**: report results, then ask:
+
+  > Smoke test passed. The original files at `${source_dir}_orig` are no
+  > longer needed. Delete them to free disk space?
+  > 1. **Yes, delete** (default) — `rm -rf "${source_dir}_orig"`
+  > 2. **Keep for now** — you can delete manually later
+  >
+  > In autonomous mode: delete `_orig`.
+
+  Report final disk space freed (from `du -sh` in Step 1).
+
 - **FAILED**: report the mismatch. **Do NOT delete `_orig`.** Offer to roll
   back the swap (`mv "$farm_dir" "${farm_dir}_lgd"; mv "${source_dir}_orig" "$source_dir"`).
-
-For same-path swap: original preserved at `${source_dir}_orig`. Analysis code
-works without changes. Suggest deleting `_orig` when satisfied.
 
 **DONE for Phase 2.**
 
