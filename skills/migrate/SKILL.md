@@ -125,7 +125,28 @@ ls -1 "$source_dir"/*.root | wc -l
 du -sh "$source_dir"
 ```
 
-Report: number of files, total size. Confirm with the user before proceeding.
+Check for non-`.root` files:
+
+```bash
+find "$source_dir" -maxdepth 1 -type f ! -name '*.root' 2>/dev/null
+```
+
+If any non-`.root` files are found, **warn the user**:
+
+> **Warning:** `$source_dir` contains non-`.root` files that will NOT be
+> included in the migration:
+> ```
+> <list of files>
+> ```
+> If your analysis code expects these files (metadata, logs, config), the
+> symlink farm will be missing them and your code may break. Options:
+> 1. **Proceed anyway** — only `.root` files will be migrated
+> 2. **Abort** — manually handle the extra files first
+>
+> In autonomous mode: proceed with warning noted in output.
+
+Report: number of `.root` files, total size, any non-`.root` files.
+Confirm with the user before proceeding.
 
 ### Step 2: Check for DID conflicts
 
@@ -340,14 +361,51 @@ done < /tmp/pfns_${dataset_name}.txt
    ```bash
    ls -1 "$farm_dir" | wc -l
    ```
-2. Spot-check one symlink:
+2. Spot-check one symlink resolves:
    ```bash
    ls -la "$farm_dir"/$(ls "$farm_dir" | head -1)
    ```
-3. ROOT readability check (if available):
+3. ROOT readability check:
    ```bash
    root -b -l -q -e 'auto f=TFile::Open("'"$farm_dir"'/$(ls $farm_dir | head -1)"); cout << (f && !f->IsZombie() ? "OK" : "FAIL") << endl;'
    ```
+
+### Step 8b: Smoke test (same-path swap only)
+
+For same-path swap, the original files are preserved at `${source_dir}_orig`.
+Compare TTree entry counts between original and farm to verify data integrity:
+
+```bash
+root -b -l -q -e '
+  #include <TChain.h>
+  #include <TFile.h>
+  #include <TKey.h>
+  #include <iostream>
+  using namespace std;
+  auto f = TFile::Open("'"${source_dir}_orig"'/$(ls "${source_dir}_orig" | head -1)");
+  if (!f || f->IsZombie()) { cout << "FAIL: cannot open original" << endl; return; }
+  TIter next(f->GetListOfKeys());
+  TKey *key;
+  bool all_ok = true;
+  while ((key = (TKey*)next())) {
+    if (TString(key->GetClassName()) != "TTree") continue;
+    TString name = key->GetName();
+    TChain orig(name), farm(name);
+    orig.Add("'"${source_dir}_orig"'/*.root");
+    farm.Add("'"$farm_dir"'/*.root");
+    Long64_t n_orig = orig.GetEntries(), n_farm = farm.GetEntries();
+    cout << name << ": orig=" << n_orig << " farm=" << n_farm
+         << (n_orig == n_farm ? " MATCH" : " MISMATCH") << endl;
+    if (n_orig != n_farm) all_ok = false;
+  }
+  f->Close();
+  cout << (all_ok ? "SMOKE TEST PASSED" : "SMOKE TEST FAILED") << endl;
+'
+```
+
+- **PASSED**: report results and proceed.
+- **FAILED**: report the mismatch. **Do NOT delete `_orig`.** Offer to roll
+  back the swap (`mv "$farm_dir" "${farm_dir}_lgd"; mv "${source_dir}_orig" "$source_dir"`).
 
 For same-path swap: original preserved at `${source_dir}_orig`. Analysis code
 works without changes. Suggest deleting `_orig` when satisfied.
