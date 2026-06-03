@@ -32,6 +32,12 @@ and optional codebase adaptation with safe rollback.
   - Verify: `voms-proxy-info --all` should show `/atlas/usatlas`
 - Rucio account with scratchdisk and LOCALGROUPDISK quotas
 
+Grid proxy and VOMS are only needed during migration (upload + replication);
+use `-valid 96:00` since FTS replication can take up to 12 hours.
+After migration, the symlink farm is readable without any proxy on SDCC nodes.
+
+For general BNL storage documentation, see https://usatlas.github.io/af-docs/bnl/storage/.
+
 ## Installation
 
 From GitHub:
